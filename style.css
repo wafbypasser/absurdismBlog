@@ -139,3 +139,10 @@ span {
   align-self: flex-start; 
   display: block; 
 }
+.imgs2 {
+  width: 100%;
+  height: auto; 
+  border: 1px solid #d78df7;
+  align-self: flex-start; 
+  display: block; 
+}
