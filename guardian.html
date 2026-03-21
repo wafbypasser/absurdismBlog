@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+    <title>Because learning is great.</title>
+</head>
+<body>
+    <div class="center">
+        <a href="index.html">About me!</a>
+        <a href="https://github.com/wafbypasser/">Github</a>
+        <a href="posts.html">Posts</a>
+    </div>
+    <hr>
+    <div class="postslogic">
+        <img id="i1" src="/blog/pictures/ssh.jpg" alt="SSH Security Concept">
+        <h1>Building My Own SSH IP Blocker for Linux</h1>
+        
+        <p>Hey there! Long time no see. Today I built an SSH IP blocker for Linux from scratch. I've been diving deeper into Linux lately, and honestly, what's more fun than learning by building something yourself?</p>
+
+        <h2>Why Reinvent the Wheel?</h2>
+        <p>Great question! Tools like <strong>Fail2Ban</strong> already do this—and they do it well. But my goal isn't just to block IPs; it's to understand <em>how</em> and <em>why</em> these tools work under the hood. The Linux world is vast, like an endless rabbit hole, and I'm trying to wrap my head around it, one script at a time.</p>
+
+        <h2>What Does My Script Actually Do?</h2>
+        <p>In simple terms, <strong>GuardianSSH</strong> (that's what I named it) does three things:</p>
+        <ol>
+            <li> <strong>Watches</strong> your SSH logs for failed login attempts</li>
+            <li> <strong>Tracks</strong> suspicious IPs across multiple scans</li>
+            <li> <strong>Blocks</strong> malicious IPs automatically using your system firewall</li>
+        </ol>
+        <p>It's written in Python, uses only the standard library, and works on Ubuntu, Arch, and Fedora. No external dependencies—just pure logic.</p>
+
+        <h2>The Challenge: Make it universal</h2>
+        <p>I develop on Arch Linux, which doesn't use <code>/var/log/auth.log</code> like Ubuntu does. Instead, it uses <code>journalctl</code> for logging. Oh, and it doesn't come with <code>ufw</code> by default.</p>
+        <p>Solution? I added firewall auto-detection. Now the script checks for <code>ufw</code>, <code>firewalld</code>, or <code>iptables</code> and uses whichever is available. Cross-distribution compatibility (I guess)</p>
+
+        <h2>A Quick Code Sneak Peek</h2>
+        <p>Here's the core regex that finds malicious IPs in the logs:</p>
+        <pre><code>pattern = re.compile(r"Failed password for .* from (\d+\.\d+\.\d+\.\d+)")</code></pre>
+        <p>Simple, right? But pairing this with state persistence (saving counts to a JSON file) is what makes the script smart enough to catch slow, distributed attacks.</p>
+
+        <h2>What I Learned</h2>
+        <ul>
+            <li>Never assume your environment - always code for portability</li>
+            <li>Localhost protection is non-negotiable (don't block 127.0.0.1!)</li>
+            <li>Reading system logs is different on every distro</li>
+            <li>Security tools need safety rails, not just features</li>
+        </ul>
+
+        <h2>Try It Yourself</h2>
+        <p>The full code is on my GitHub. Feel free to fork it, break it, or improve it. If you're learning Linux too, I'd love to hear what you're building!</p>
+        <p><strong> <a href="https://github.com/wafbypasser/Mini_LINUX_IDS">Check out GuardianSSH on GitHub</a></strong></p>
+
+        <p>Thanks for reading. Next up: maybe a log visualizer? Or integrating AbuseIPDB API?.</p>
+    </div>
+</body>
+</html>
