@@ -37,7 +37,7 @@
 
         <h2>A Quick Code Sneak Peek</h2>
         <p>Here's the core regex that finds malicious IPs in the logs:</p>
-        <pre><code>pattern = re.compile(r"Failed password for .* from (\d+\.\d+\.\d+\.\d+)")</code></pre>
+        <span>pattern = re.compile(r"Failed password for .* from (\d+\.\d+\.\d+\.\d+)")</span>
         <p>Simple, right? But pairing this with state persistence (saving counts to a JSON file) is what makes the script smart enough to catch slow, distributed attacks.</p>
 
         <h2>What I Learned</h2>
