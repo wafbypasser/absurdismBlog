@@ -14,7 +14,7 @@
     </div>
     <hr>
     <div class="postslogic">
-        <img id="i1" src="/blog/pictures/ssh.jpg" alt="SSH Security Concept">
+        <img id="i1" src="pictures/ssh.jpg" alt="SSH Security Concept">
         <h1>Building My Own SSH IP Blocker for Linux</h1>
         
         <p>Hey there! Long time no see. Today I built an SSH IP blocker for Linux from scratch. I've been diving deeper into Linux lately, and honestly, what's more fun than learning by building something yourself?</p>
@@ -24,11 +24,11 @@
 
         <h2>What Does My Script Actually Do?</h2>
         <p>In simple terms, <strong>GuardianSSH</strong> (that's what I named it) does three things:</p>
-        <ol>
+        <ul>
             <li> <strong>Watches</strong> your SSH logs for failed login attempts</li>
             <li> <strong>Tracks</strong> suspicious IPs across multiple scans</li>
             <li> <strong>Blocks</strong> malicious IPs automatically using your system firewall</li>
-        </ol>
+        </ul>
         <p>It's written in Python, uses only the standard library, and works on Ubuntu, Arch, and Fedora. No external dependencies—just pure logic.</p>
 
         <h2>The Challenge: Make it universal</h2>
